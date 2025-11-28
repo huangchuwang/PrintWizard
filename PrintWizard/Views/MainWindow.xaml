@@ -1,0 +1,458 @@
+﻿<Window
+    x:Class="PrintWizard.Views.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:PrintWizard.Models"
+    xmlns:local2="clr-namespace:PrintWizard"
+    xmlns:local3="clr-namespace:PrintWizard.Common"
+    Title="标签打印辅助工具"
+    Width="850"
+    Height="600"
+    WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <local3:SubtractConverter x:Key="SubtractConverter" />
+        <local3:BooleanToFontWeightConverter x:Key="BooleanToFontWeightConverter" />
+
+        <Style x:Key="DeleteButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#DC3545" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border
+                            Width="{TemplateBinding Width}"
+                            Height="{TemplateBinding Height}"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#C82333" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ResizeHandleStyle" TargetType="Thumb">
+            <Setter Property="Width" Value="15" />
+            <Setter Property="Height" Value="15" />
+            <Setter Property="Cursor" Value="SizeNWSE" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Grid Background="Transparent">
+                            <Path
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom"
+                                Data="M 12,12 L 12,0 L 0,12 Z"
+                                Fill="#808080" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Window.InputBindings>
+        <KeyBinding
+            Key="P"
+            Command="{Binding PrintCommand}"
+            Modifiers="Control" />
+    </Window.InputBindings>
+
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel
+            Grid.Row="0"
+            Margin="0,0,0,15"
+            Orientation="Horizontal">
+            <TextBlock
+                VerticalAlignment="Center"
+                FontSize="20"
+                FontWeight="Bold"
+                Text="自定义打印设计器" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,0,0,15">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="15" />
+                <ColumnDefinition Width="300" />
+            </Grid.ColumnDefinitions>
+
+            <GroupBox Grid.Column="0" Header="打印预览">
+                <Border
+                    Background="#F8F8F8"
+                    BorderBrush="#CCCCCC"
+                    BorderThickness="1">
+                    <Border.Effect>
+                        <DropShadowEffect
+                            BlurRadius="10"
+                            Direction="315"
+                            Opacity="0.5"
+                            ShadowDepth="5"
+                            Color="Black" />
+                    </Border.Effect>
+
+                    <Viewbox Stretch="Uniform">
+                        <Border
+                            Padding="{Binding PrintMargin}"
+                            Background="White"
+                            BorderBrush="#E0E0E0"
+                            BorderThickness="1">
+
+                            <Canvas
+                                x:Name="ContentCanvas"
+                                Width="{Binding PrintAreaWidth}"
+                                Height="{Binding PrintAreaHeight}"
+                                Background="Green">
+
+                                <ItemsControl ItemsSource="{Binding PrintItems}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <Canvas />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+
+                                    <ItemsControl.ItemContainerStyle>
+                                        <Style TargetType="ContentPresenter">
+                                            <Setter Property="Canvas.Left" Value="{Binding X}" />
+                                            <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                                            <Setter Property="Panel.ZIndex" Value="1" />
+                                            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="Item_PreviewMouseLeftButtonDown" />
+                                            <EventSetter Event="MouseMove" Handler="Item_MouseMove" />
+                                            <EventSetter Event="MouseLeftButtonUp" Handler="Item_MouseLeftButtonUp" />
+                                            <Setter Property="Cursor" Value="SizeAll" />
+                                            <Setter Property="HorizontalAlignment" Value="Left" />
+                                            <Setter Property="VerticalAlignment" Value="Top" />
+                                        </Style>
+                                    </ItemsControl.ItemContainerStyle>
+
+                                    <ItemsControl.Resources>
+                                        <DataTemplate DataType="{x:Type local:TextPrintItem}">
+                                            <Grid
+                                                x:Name="RootGrid"
+                                                Width="{Binding Width, Mode=TwoWay}"
+                                                Height="{Binding Height, Mode=TwoWay}"
+                                                Background="Transparent">
+                                                <Border
+                                                    Height="15"
+                                                    Background="Transparent"
+                                                    BorderBrush="Gray"
+                                                    BorderThickness="0.1"
+                                                    ToolTip="拖拽移动，右下角调整大小">
+                                                    <TextBox
+                                                        HorizontalContentAlignment="Stretch"
+                                                        VerticalContentAlignment="Top"
+                                                        AcceptsReturn="True"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        FontSize="{Binding FontSize}"
+                                                        FontWeight="{Binding IsBold, Converter={StaticResource BooleanToFontWeightConverter}}"
+                                                        IsReadOnly="False"
+                                                        Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
+                                                        TextWrapping="Wrap"
+                                                        VerticalScrollBarVisibility="Hidden" />
+                                                </Border>
+
+                                                <Thumb
+                                                    Width="10"
+                                                    Height="5"
+                                                    Margin="0,0,0,8"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Bottom"
+                                                    DragDelta="ResizeThumb_DragDelta"
+                                                    Style="{StaticResource ResizeHandleStyle}" />
+
+                                                <Button
+                                                    x:Name="DeleteBtn"
+                                                    Width="15"
+                                                    Height="15"
+                                                    Margin="0,-8,-8,0"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Top"
+                                                    Click="DeleteItem_Click"
+                                                    Content="X"
+                                                    FontSize="10"
+                                                    Style="{StaticResource DeleteButtonStyle}" />
+                                            </Grid>
+                                        </DataTemplate>
+
+                                        <DataTemplate DataType="{x:Type local:QrCodePrintItem}">
+                                            <Grid
+                                                Width="{Binding Width, Mode=TwoWay}"
+                                                Height="{Binding Height, Mode=TwoWay}"
+                                                Background="Transparent">
+                                                <Border
+                                                    Padding="0"
+                                                    Background="Transparent"
+                                                    BorderBrush="Gray"
+                                                    BorderThickness="0.1"
+                                                    ToolTip="{Binding QrContent, StringFormat='二维码内容: {0}'}">
+                                                    <Image
+                                                        HorizontalAlignment="Stretch"
+                                                        VerticalAlignment="Stretch"
+                                                        Source="{Binding QrImageSource}"
+                                                        Stretch="Uniform" />
+                                                </Border>
+
+                                                <Thumb
+                                                    Width="15"
+                                                    Height="15"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Bottom"
+                                                    DragDelta="ResizeThumb_DragDelta"
+                                                    Style="{StaticResource ResizeHandleStyle}" />
+
+                                                <Button
+                                                    x:Name="DeleteBtn"
+                                                    Width="15"
+                                                    Height="15"
+                                                    Margin="0,-8,-8,0"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Top"
+                                                    Click="DeleteItem_Click"
+                                                    Content="X"
+                                                    FontSize="10"
+                                                    Style="{StaticResource DeleteButtonStyle}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.Resources>
+                                </ItemsControl>
+                            </Canvas>
+                        </Border>
+                    </Viewbox>
+                </Border>
+            </GroupBox>
+
+            <TabControl
+                Grid.Column="2"
+                Margin="5,0,0,0"
+                Padding="0">
+
+                <TabItem Header="页面设置">
+                    <StackPanel Margin="5,10,5,5">
+                        <GroupBox Margin="0,0,0,10" Header="打印机设置">
+                            <StackPanel Margin="5">
+                                <ComboBox
+                                    Height="28"
+                                    DisplayMemberPath="Name"
+                                    FontSize="12"
+                                    ItemsSource="{Binding AvailablePrinters}"
+                                    SelectedItem="{Binding SelectedPrinter}" />
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    FontSize="11"
+                                    Foreground="Gray"
+                                    Text="{Binding SelectedPrinter.Name, StringFormat='当前选择: {0}'}" />
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Margin="0,0,0,10" Header="页面尺寸与边距">
+                            <StackPanel Margin="5">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock
+                                        Grid.Row="0"
+                                        Grid.Column="0"
+                                        Margin="0,0,10,8"
+                                        VerticalAlignment="Center"
+                                        Text="纸张大小:" />
+                                    <ComboBox
+                                        Grid.Row="0"
+                                        Grid.Column="1"
+                                        Height="25"
+                                        Margin="0,0,0,8"
+                                        DisplayMemberPath="Name"
+                                        ItemsSource="{Binding PaperSizes}"
+                                        SelectedItem="{Binding SelectedPaperSize}" />
+
+                                    <TextBlock
+                                        Grid.Row="1"
+                                        Grid.Column="0"
+                                        Margin="0,0,10,8"
+                                        VerticalAlignment="Center"
+                                        Text="页边距:" />
+                                    <ComboBox
+                                        Grid.Row="1"
+                                        Grid.Column="1"
+                                        Height="25"
+                                        Margin="0,0,0,8"
+                                        DisplayMemberPath="DisplayName"
+                                        ItemsSource="{Binding Margins}"
+                                        SelectedItem="{Binding SelectedMargin}" />
+                                </Grid>
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    FontSize="11"
+                                    Foreground="Gray"
+                                    Text="{Binding PrintAreaSizeInfo, Mode=OneWay}" />
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="打印选项">
+                            <StackPanel Margin="5">
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    FontSize="11"
+                                    Text="打印份数:" />
+                                <TextBox
+                                    Width="60"
+                                    HorizontalAlignment="Left"
+                                    FontSize="11"
+                                    Text="{Binding Copies, UpdateSourceTrigger=PropertyChanged}"
+                                    ToolTip="输入打印份数" />
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </TabItem>
+
+                <TabItem Header="内容工具箱">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="5,10,5,5">
+                            <GroupBox Margin="0,0,0,15" Header="文本项">
+                                <StackPanel>
+                                    <TextBlock
+                                        Margin="0,0,0,5"
+                                        FontWeight="SemiBold"
+                                        Text="文本内容" />
+                                    <TextBox
+                                        Margin="0,0,0,10"
+                                        AcceptsReturn="True"
+                                        Text="{Binding NewItemText, UpdateSourceTrigger=PropertyChanged}"
+                                        TextWrapping="Wrap" />
+
+                                    <TextBlock
+                                        Margin="0,0,0,5"
+                                        FontWeight="SemiBold"
+                                        Text="预设格式" />
+                                    <Grid Margin="0,0,0,5">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            Grid.Column="0"
+                                            Margin="0,0,5,0"
+                                            VerticalAlignment="Center"
+                                            Text="字号:" />
+                                        <Slider
+                                            Grid.Column="1"
+                                            IsMoveToPointEnabled="True"
+                                            Maximum="72"
+                                            Minimum="8"
+                                            Value="{Binding NewItemFontSize}" />
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            VerticalAlignment="Center"
+                                            Text="{Binding NewItemFontSize, StringFormat=' {0:F0}'}" />
+                                    </Grid>
+                                    <CheckBox
+                                        Margin="0,0,0,15"
+                                        Content="字体加粗"
+                                        IsChecked="{Binding NewItemIsBold}" />
+
+                                    <Button
+                                        Width="100"
+                                        Padding="5,2"
+                                        HorizontalAlignment="Left"
+                                        Command="{Binding AddTextItemCommand}"
+                                        Content="添加文本项" />
+                                </StackPanel>
+                            </GroupBox>
+
+                            <GroupBox Header="二维码项">
+                                <StackPanel>
+                                    <TextBlock
+                                        Margin="0,0,0,5"
+                                        FontWeight="SemiBold"
+                                        Text="二维码内容" />
+                                    <TextBox Margin="0,0,0,10" Text="{Binding NewQrCodeContent, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Button
+                                        Width="100"
+                                        Padding="5,2"
+                                        HorizontalAlignment="Left"
+                                        Command="{Binding AddQrCodeItemCommand}"
+                                        Content="添加二维码项" />
+                                </StackPanel>
+                            </GroupBox>
+
+                            <Button
+                                Margin="0,20,0,0"
+                                Padding="10,5"
+                                Background="#6C757D"
+                                Command="{Binding ResetPositionCommand}"
+                                Content="重置所有位置"
+                                Foreground="White" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
+
+        <Border
+            Grid.Row="2"
+            Margin="0,0,0,10"
+            Padding="8,5"
+            Background="#F5F5F5"
+            BorderBrush="#E0E0E0"
+            BorderThickness="1"
+            CornerRadius="3">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock
+                    Margin="0,0,5,0"
+                    FontSize="12"
+                    Text="📄" />
+                <TextBlock FontSize="11" Text="{Binding StatusMessage}" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel
+            Grid.Row="3"
+            HorizontalAlignment="Right"
+            Orientation="Horizontal">
+
+            <Button
+                Margin="0,0,10,0"
+                Padding="15,5"
+                Background="#28A745"
+                Command="{Binding ExportCpclCommand}"
+                Content="导出 CPCL"
+                FontSize="14"
+                FontWeight="SemiBold"
+                Foreground="White"
+                ToolTip="生成 CPCL 打印指令文件" />
+
+            <Button
+                Padding="15,5"
+                Background="#0078D4"
+                Command="{Binding PrintCommand}"
+                Content="打印"
+                FontSize="14"
+                FontWeight="SemiBold"
+                Foreground="White" />
+        </StackPanel>
+    </Grid>
+</Window>
