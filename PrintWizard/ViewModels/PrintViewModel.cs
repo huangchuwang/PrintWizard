@@ -1,9 +1,8 @@
-﻿using Newtonsoft.Json;
-using System;
+﻿using PrintWizard.Common;
+using PrintWizard.Models;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
-using System.Linq;
 using System.Printing;
 using System.Text;
 using System.Windows;
@@ -12,8 +11,6 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using PrintWizard.Common;
-using PrintWizard.Models;
 
 namespace PrintWizard.ViewModels
 {
@@ -146,77 +143,50 @@ namespace PrintWizard.ViewModels
                 if (!PrintItems.Any()) return;
 
                 var printDialog = new PrintDialog();
-                if (SelectedPrinter != null) printDialog.PrintQueue = SelectedPrinter;
+                if (SelectedPrinter != null)
+                {
+                    printDialog.PrintQueue = SelectedPrinter;
+                }
+
+                // 1. 强行设置打印票据的纸张尺寸
+                // 注意：很多标签打印机需要先在 Windows【打印机首选项】里新建并选中同名纸张尺寸，否则代码设置可能被忽略
+                double paperWidthPx = SelectedPaperSize.Width * MmToDIPsFactor;
+                double paperHeightPx = SelectedPaperSize.Height * MmToDIPsFactor;
+                printDialog.PrintTicket.PageMediaSize = new PageMediaSize(paperWidthPx, paperHeightPx);
                 printDialog.PrintTicket.CopyCount = Copies;
 
-                // 配置纸张尺寸
-                double paperWidth = SelectedPaperSize.Width * MmToDIPsFactor;
-                double paperHeight = SelectedPaperSize.Height * MmToDIPsFactor;
-                printDialog.PrintTicket.PageMediaSize = new PageMediaSize(paperWidth, paperHeight);
-
-                var document = CreatePrintDocument();
-                if (document == null) return;
-
-                // 打印
-                printDialog.PrintDocument(((IDocumentPaginatorSource)document).DocumentPaginator, "自定义打印文档");
-                StatusMessage = $"打印成功 - {DateTime.Now:HH:mm:ss}";
-                string directoryPath = @"E:\" + new Random().NextInt64() + "image.png";
-                ConvertCanvasToImage(this.canvas, directoryPath);// 测试保存预览图像
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"打印失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-
-
-        private FlowDocument CreatePrintDocument()
-        {
-            try
-            {
-                double marginInPixels = SelectedMargin.Margin * MmToDIPsFactor;
-                double pageWidth = SelectedPaperSize.Width * MmToDIPsFactor;
-                double pageHeight = SelectedPaperSize.Height * MmToDIPsFactor;
-
-                var document = new FlowDocument
+                // 2. 创建一个临时的“打印专用画布”，尺寸完全等于纸张物理尺寸
+                Canvas printCanvas = new Canvas
                 {
-                    Background = Brushes.White,
-                    FontFamily = new FontFamily("Microsoft YaHei"),
-                    FontSize = 14,
-                    // WYSIWYG 核心：FlowDocument 的 PagePadding 等于选定的页边距
-                    PagePadding = new Thickness(marginInPixels),
-                    PageWidth = pageWidth,
-                    PageHeight = pageHeight,
-                    ColumnWidth = double.PositiveInfinity // 禁用多列布局
+                    Width = paperWidthPx,
+                    Height = paperHeightPx,
+                    Background = Brushes.White
                 };
 
-                // 创建一个 Canvas，其大小就是可打印区域的大小
-                var printCanvas = new Canvas
-                {
-                    Width = PrintAreaWidth,
-                    Height = PrintAreaHeight
-                };
-                string json = Newtonsoft.Json.JsonConvert.SerializeObject(PrintItems);
-                Console.WriteLine(json);
+                // 3. 将内容项映射到这个画布上
+                // 获取当前设置的边距（像素）
+                double marginPx = SelectedMargin.Margin * MmToDIPsFactor;
+
                 foreach (var item in PrintItems)
                 {
                     UIElement elementToPrint = null;
 
-                    // WYSIWYG 核心：X/Y 就是最终的相对 Canvas 坐标
-                    double relativeX = item.X;
-                    double relativeY = item.Y;
+                    // 绝对坐标 = 相对坐标 + 边距
+                    // PrintVisual 默认从打印机的“可打印区域”左上角开始
+                    // 如果打印机有物理边距（例如2mm），这里可能需要微调，但通常这样写是最准确的
+                    double absoluteX = item.X + marginPx;
+                    double absoluteY = item.Y + marginPx;
 
                     if (item is TextPrintItem textItem)
                     {
-                        var textBlock = new TextBlock(new Run(textItem.Content))
+                        elementToPrint = new TextBlock(new Run(textItem.Content))
                         {
                             TextWrapping = TextWrapping.Wrap,
                             FontSize = textItem.FontSize,
                             FontWeight = textItem.IsBold ? FontWeights.Bold : FontWeights.Normal,
-                            Width = textItem.Width
+                            Width = textItem.Width,
+                            Foreground = Brushes.Black
                         };
-                        elementToPrint = textBlock;
                     }
                     else if (item is QrCodePrintItem qrItem)
                     {
@@ -234,21 +204,32 @@ namespace PrintWizard.ViewModels
 
                     if (elementToPrint != null)
                     {
-                        // 直接使用 item.X 和 item.Y 设置位置
-                        Canvas.SetLeft(elementToPrint, relativeX);
-                        Canvas.SetTop(elementToPrint, relativeY);
+                        Canvas.SetLeft(elementToPrint, absoluteX);
+                        Canvas.SetTop(elementToPrint, absoluteY);
                         printCanvas.Children.Add(elementToPrint);
                     }
                 }
 
-                document.Blocks.Add(new BlockUIContainer(printCanvas));
+                // 4. 关键步骤：强制触发布局系统进行测量和排列
+                // 这一步如果不做，PrintVisual 打印出来就是空的或者错位的
+                Size pageSize = new Size(paperWidthPx, paperHeightPx);
+                printCanvas.Measure(pageSize);
+                printCanvas.Arrange(new Rect(new Point(0, 0), pageSize));
+                printCanvas.UpdateLayout();
 
-                return document;
+                // 5. 直接打印 Visual 对象
+                // 这种方式绕过了 FlowDocument/FixedDocument 的自动排版和内边距逻辑
+                printDialog.PrintVisual(printCanvas, "Label Print Job");
+
+                StatusMessage = $"打印成功 - {DateTime.Now:HH:mm:ss}";
+
+                // 调试代码：保存快照看是否生成正确 (如果还有问题，可以取消注释检查图片)
+                // string debugPath = @"E:\debug_print.png";
+                // ConvertCanvasToImage(printCanvas, debugPath); 
             }
             catch (Exception ex)
             {
-                StatusMessage = $"创建文档失败: {ex.Message}";
-                return null;
+                MessageBox.Show($"打印失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -273,7 +254,6 @@ namespace PrintWizard.ViewModels
                 encoder.Save(stream);
             }
         }
-
 
         // 3. [新增] 核心函数：生成 CPCL 并保存
         private void ExecuteExportCpcl(object parameter)
