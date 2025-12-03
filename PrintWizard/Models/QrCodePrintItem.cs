@@ -44,7 +44,10 @@ namespace PrintWizard.Models
                 QRCodeData qrCodeData = qrGenerator.CreateQrCode(content, QRCodeGenerator.ECCLevel.Q);
                 using (var qrCode = new QRCode(qrCodeData))
                 {
-                    using (var qrBitmap = qrCode.GetGraphic(5, System.Drawing.Color.Black, System.Drawing.Color.White, true))
+                    // 【关键修改】将最后一个参数改为 false
+                    // GetGraphic(pixelsPerModule, darkColor, lightColor, drawQuietZones)
+                    // drawQuietZones: false 表示不绘制默认的白色静区边框
+                    using (var qrBitmap = qrCode.GetGraphic(20, System.Drawing.Color.Black, System.Drawing.Color.White, false))
                     {
                         using (MemoryStream memory = new MemoryStream())
                         {

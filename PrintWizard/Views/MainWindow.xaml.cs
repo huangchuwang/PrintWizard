@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using PrintWizard.Models;
 using PrintWizard.ViewModels;
 
@@ -13,8 +14,17 @@ namespace PrintWizard.Views
 {
     public partial class MainWindow : Window
     {
+        // 拖拽相关状态
         private bool isDragging = false;
-        private Point startPoint; // 原始代码中这里存储的是 Canvas 上的起始点
+        private Point startClickPoint;
+        private double originalItemX;
+        private double originalItemY;
+
+        // 长按检测
+        private DispatcherTimer longPressTimer;
+        private const int LongPressThresholdMs = 200;
+        private const double DragCancelThreshold = 3.0;
+
         private FrameworkElement draggedElement;
         private PrintItemBase draggedItem;
         private PrintViewModel? vm => DataContext as PrintViewModel;
@@ -22,16 +32,30 @@ namespace PrintWizard.Views
         public MainWindow()
         {
             InitializeComponent();
-            // 注意：在 MainWindow.xaml 中，ContentCanvas 必须在 InitializeComponent 后才存在
+
+            longPressTimer = new DispatcherTimer();
+            longPressTimer.Interval = TimeSpan.FromMilliseconds(LongPressThresholdMs);
+            longPressTimer.Tick += LongPressTimer_Tick;
+
             var viewModel = new PrintViewModel(ContentCanvas);
             DataContext = viewModel;
         }
 
-        // 鼠标按下：准备拖拽 (原始代码中的逻辑)
+        private void LongPressTimer_Tick(object? sender, EventArgs e)
+        {
+            longPressTimer.Stop();
+
+            if (draggedElement != null && draggedItem != null)
+            {
+                isDragging = true;
+                draggedElement.CaptureMouse();
+                Panel.SetZIndex(draggedElement, 999);
+                draggedElement.Cursor = Cursors.SizeAll;
+            }
+        }
+
         private void Item_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            // 【重要逻辑】检查点击源
-            // 如果点击的是删除按钮或调整大小手柄，则不启动整体拖拽
             if (e.OriginalSource is DependencyObject originalSource)
             {
                 var parentBtn = FindVisualParent<Button>(originalSource);
@@ -46,20 +70,12 @@ namespace PrintWizard.Views
 
             if (draggedElement == null || draggedItem == null) return;
 
-            isDragging = true;
+            isDragging = false;
+            startClickPoint = e.GetPosition(ContentCanvas);
+            originalItemX = draggedItem.X;
+            originalItemY = draggedItem.Y;
 
-            // 原始代码中，startPoint 存储的是鼠标在 Canvas 上的绝对位置
-            // 这是导致拖拽精度问题的关键，因为拖拽时只应计算偏移量
-            startPoint = e.GetPosition(ContentCanvas);
-
-            draggedElement.CaptureMouse();
-
-            if (draggedElement != null)
-            {
-                Panel.SetZIndex(draggedElement, 999);
-            }
-
-            e.Handled = true;
+            longPressTimer.Start();
         }
 
         private T FindVisualParent<T>(DependencyObject child) where T : DependencyObject
@@ -70,23 +86,28 @@ namespace PrintWizard.Views
             return FindVisualParent<T>(parentObject);
         }
 
-        // 鼠标移动：拖拽逻辑
         private void Item_MouseMove(object sender, MouseEventArgs e)
         {
-            if (isDragging && e.LeftButton == MouseButtonState.Pressed && vm != null && draggedItem != null)
+            var currentPoint = e.GetPosition(ContentCanvas);
+
+            if (longPressTimer.IsEnabled)
             {
-                //当前鼠标位置
-                var currentPoint = e.GetPosition(ContentCanvas);
+                if (Math.Abs(currentPoint.X - startClickPoint.X) > DragCancelThreshold ||
+                    Math.Abs(currentPoint.Y - startClickPoint.Y) > DragCancelThreshold)
+                {
+                    longPressTimer.Stop();
+                    return;
+                }
+            }
 
-                // 使用当前鼠标位置减去起始鼠标位置，得到位移量
-                // 它计算的是 (当前鼠标 - 起始鼠标)，然后将位移量加到元素的 X/Y 上。
-                double deltaX = currentPoint.X - startPoint.X;
-                double deltaY = currentPoint.Y - startPoint.Y;
+            if (isDragging && vm != null && draggedItem != null)
+            {
+                double deltaX = currentPoint.X - startClickPoint.X;
+                double deltaY = currentPoint.Y - startClickPoint.Y;
 
-                double newX = draggedItem.X + deltaX;
-                double newY = draggedItem.Y + deltaY;
+                double newX = originalItemX + deltaX;
+                double newY = originalItemY + deltaY;
 
-                // 边界检查
                 double printLeft = 0;
                 double printTop = 0;
                 double itemWidth = draggedItem.Width;
@@ -95,32 +116,38 @@ namespace PrintWizard.Views
                 double maxNewX = vm.PrintAreaWidth - itemWidth;
                 double maxNewY = vm.PrintAreaHeight - itemHeight;
 
-                newX = System.Math.Max(printLeft, System.Math.Min(newX, maxNewX));
-                newY = System.Math.Max(printTop, System.Math.Min(newY, maxNewY));
+                newX = Math.Max(printLeft, Math.Min(newX, maxNewX));
+                newY = Math.Max(printTop, Math.Min(newY, maxNewY));
 
                 if (maxNewX < printLeft) newX = printLeft;
                 if (maxNewY < printTop) newY = printTop;
 
+                draggedItem.X = newX;
+                draggedItem.Y = newY;
 
-                if (Math.Abs(draggedItem.X - newX) > 0.1 || Math.Abs(draggedItem.Y - newY) > 0.1)
-                {
-                    draggedItem.X = newX;
-                    draggedItem.Y = newY;
-                }
-
-                // 更新 startPoint 以供下一次移动计算
-                startPoint = currentPoint;
+                e.Handled = true;
             }
         }
 
         private void Item_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
-            isDragging = false;
-            if (draggedElement != null)
+            if (longPressTimer.IsEnabled)
             {
-                draggedElement.ReleaseMouseCapture();
-                Panel.SetZIndex(draggedElement, 1);
+                longPressTimer.Stop();
             }
+
+            if (isDragging)
+            {
+                isDragging = false;
+                if (draggedElement != null)
+                {
+                    draggedElement.ReleaseMouseCapture();
+                    Panel.SetZIndex(draggedElement, 1);
+                    draggedElement.Cursor = null;
+                }
+                e.Handled = true;
+            }
+
             draggedElement = null;
             draggedItem = null;
         }
@@ -135,15 +162,34 @@ namespace PrintWizard.Views
                 double newWidth = item.Width + e.HorizontalChange;
                 double newHeight = item.Height + e.VerticalChange;
 
-                newWidth = Math.Max(newWidth, 30);
-                newHeight = Math.Max(newHeight, 30);
+                newWidth = Math.Max(newWidth, 20);
+                newHeight = Math.Max(newHeight, 20);
 
-                // 边界限制：不能超出 Canvas 区域
+                // 【核心修改】如果是二维码，强制保持正方形比例
+                if (item is QrCodePrintItem)
+                {
+                    // 取宽高中的最大值作为新的边长，保证不被压扁且操作符合直觉
+                    double size = Math.Max(newWidth, newHeight);
+                    newWidth = size;
+                    newHeight = size;
+                }
+
+                // 边界限制
                 if (item.X + newWidth > vm.PrintAreaWidth) newWidth = vm.PrintAreaWidth - item.X;
                 if (item.Y + newHeight > vm.PrintAreaHeight) newHeight = vm.PrintAreaHeight - item.Y;
 
+                // 二维码再次检查边界导致的比例失调（如果宽度受限，高度也要跟着受限）
+                if (item is QrCodePrintItem)
+                {
+                    double size = Math.Min(newWidth, newHeight);
+                    newWidth = size;
+                    newHeight = size;
+                }
+
                 item.Width = newWidth;
                 item.Height = newHeight;
+
+                e.Handled = true;
             }
         }
 

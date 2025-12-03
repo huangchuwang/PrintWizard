@@ -148,23 +148,39 @@ namespace PrintWizard.ViewModels
                     printDialog.PrintQueue = SelectedPrinter;
                 }
 
-                // 1. 强行设置打印票据的纸张尺寸
-                // 注意：很多标签打印机需要先在 Windows【打印机首选项】里新建并选中同名纸张尺寸，否则代码设置可能被忽略
+                // 1. 设置纸张尺寸
                 double paperWidthPx = SelectedPaperSize.Width * MmToDIPsFactor;
                 double paperHeightPx = SelectedPaperSize.Height * MmToDIPsFactor;
                 printDialog.PrintTicket.PageMediaSize = new PageMediaSize(paperWidthPx, paperHeightPx);
                 printDialog.PrintTicket.CopyCount = Copies;
 
-                // 2. 创建一个临时的“打印专用画布”，尺寸完全等于纸张物理尺寸
+                // 【新增】获取硬件偏移量 (用于调试和修正)
+                // 某些打印机即便报告支持全幅打印，物理上也可能从 1px 处开始
+                double hardwareLeftMargin = 0;
+                double hardwareTopMargin = 0;
+
+                try
+                {
+                    var capabilities = printDialog.PrintQueue.GetPrintCapabilities(printDialog.PrintTicket);
+                    if (capabilities.PageImageableArea != null)
+                    {
+                        // OriginWidth 是物理纸张左边缘到可打印区域左边缘的距离
+                        hardwareLeftMargin = capabilities.PageImageableArea.OriginWidth;
+                        hardwareTopMargin = capabilities.PageImageableArea.OriginHeight;
+                    }
+                }
+                catch { /* 忽略获取能力失败的情况，使用默认0 */ }
+
+                // 2. 创建打印画布
                 Canvas printCanvas = new Canvas
                 {
                     Width = paperWidthPx,
                     Height = paperHeightPx,
-                    Background = Brushes.White
+                    Background = Brushes.White,
+                    UseLayoutRounding = true // 【关键】防止边缘模糊
                 };
 
-                // 3. 将内容项映射到这个画布上
-                // 获取当前设置的边距（像素）
+                // 3. 映射内容
                 double marginPx = SelectedMargin.Margin * MmToDIPsFactor;
 
                 foreach (var item in PrintItems)
@@ -172,10 +188,21 @@ namespace PrintWizard.ViewModels
                     UIElement elementToPrint = null;
 
                     // 绝对坐标 = 相对坐标 + 边距
-                    // PrintVisual 默认从打印机的“可打印区域”左上角开始
-                    // 如果打印机有物理边距（例如2mm），这里可能需要微调，但通常这样写是最准确的
+                    // 【修正逻辑】:
+                    // 如果 WPF 的 PrintVisual 是以“可打印区域”为原点打印的，
+                    // 那么我们加上 hardwareLeftMargin 可能会导致内容被推得更远。
+                    // 但如果用户反馈左侧被裁剪，说明内容画在了不可打印区域。
+                    // 我们添加一个极小的 1px 安全偏移量，通常能救回被裁剪的边缘。
+                    double safeOffset = 1.0; // 1 DIPs ≈ 0.26mm 安全区
+
                     double absoluteX = item.X + marginPx;
                     double absoluteY = item.Y + marginPx;
+
+                    // 如果边距为0，且在最左边，强制加一点点偏移以防物理裁剪
+                    if (marginPx == 0 && item.X < 5)
+                    {
+                        absoluteX += safeOffset;
+                    }
 
                     if (item is TextPrintItem textItem)
                     {
@@ -185,7 +212,11 @@ namespace PrintWizard.ViewModels
                             FontSize = textItem.FontSize,
                             FontWeight = textItem.IsBold ? FontWeights.Bold : FontWeights.Normal,
                             Width = textItem.Width,
-                            Foreground = Brushes.Black
+                            Foreground = Brushes.Black,
+                            Padding = new Thickness(0), // 【关键】确保无内边距
+                            Margin = new Thickness(0),
+                            LineHeight = Double.NaN, // 自动行高
+                            SnapsToDevicePixels = true
                         };
                     }
                     else if (item is QrCodePrintItem qrItem)
@@ -197,7 +228,8 @@ namespace PrintWizard.ViewModels
                                 Source = bitmapSource,
                                 Width = qrItem.Width,
                                 Height = qrItem.Height,
-                                Stretch = Stretch.Uniform
+                                Stretch = Stretch.Uniform,
+                                SnapsToDevicePixels = true
                             };
                         }
                     }
@@ -210,22 +242,16 @@ namespace PrintWizard.ViewModels
                     }
                 }
 
-                // 4. 关键步骤：强制触发布局系统进行测量和排列
-                // 这一步如果不做，PrintVisual 打印出来就是空的或者错位的
+                // 4. 强制布局
                 Size pageSize = new Size(paperWidthPx, paperHeightPx);
                 printCanvas.Measure(pageSize);
                 printCanvas.Arrange(new Rect(new Point(0, 0), pageSize));
                 printCanvas.UpdateLayout();
 
-                // 5. 直接打印 Visual 对象
-                // 这种方式绕过了 FlowDocument/FixedDocument 的自动排版和内边距逻辑
+                // 5. 打印
                 printDialog.PrintVisual(printCanvas, "Label Print Job");
 
                 StatusMessage = $"打印成功 - {DateTime.Now:HH:mm:ss}";
-
-                // 调试代码：保存快照看是否生成正确 (如果还有问题，可以取消注释检查图片)
-                // string debugPath = @"E:\debug_print.png";
-                // ConvertCanvasToImage(printCanvas, debugPath); 
             }
             catch (Exception ex)
             {

@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36518.9
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PrintWizard", "WpfApp1\PrintWizard.csproj", "{7FA124C5-BC61-4091-B49C-D2759E07FA07}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PrintWizard", "PrintWizard\PrintWizard.csproj", "{6ED5C95B-09E4-528D-182A-CF306576CE5B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,10 +11,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{7FA124C5-BC61-4091-B49C-D2759E07FA07}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{7FA124C5-BC61-4091-B49C-D2759E07FA07}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{7FA124C5-BC61-4091-B49C-D2759E07FA07}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{7FA124C5-BC61-4091-B49C-D2759E07FA07}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6ED5C95B-09E4-528D-182A-CF306576CE5B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6ED5C95B-09E4-528D-182A-CF306576CE5B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6ED5C95B-09E4-528D-182A-CF306576CE5B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6ED5C95B-09E4-528D-182A-CF306576CE5B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

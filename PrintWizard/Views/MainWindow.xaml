@@ -13,6 +13,7 @@
     <Window.Resources>
         <local3:SubtractConverter x:Key="SubtractConverter" />
         <local3:BooleanToFontWeightConverter x:Key="BooleanToFontWeightConverter" />
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
         <Style x:Key="DeleteButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#DC3545" />
@@ -27,7 +28,7 @@
                             Width="{TemplateBinding Width}"
                             Height="{TemplateBinding Height}"
                             Background="{TemplateBinding Background}"
-                            CornerRadius="10">
+                            CornerRadius="8">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                     </ControlTemplate>
@@ -119,7 +120,7 @@
                                 x:Name="ContentCanvas"
                                 Width="{Binding PrintAreaWidth}"
                                 Height="{Binding PrintAreaHeight}"
-                                Background="Green">
+                                Background="White">
 
                                 <ItemsControl ItemsSource="{Binding PrintItems}">
                                     <ItemsControl.ItemsPanel>
@@ -149,30 +150,46 @@
                                                 Width="{Binding Width, Mode=TwoWay}"
                                                 Height="{Binding Height, Mode=TwoWay}"
                                                 Background="Transparent">
-                                                <Border
-                                                    Height="15"
+
+                                                <Rectangle
+                                                    Fill="Transparent"
+                                                    IsHitTestVisible="False"
+                                                    RadiusX="2"
+                                                    RadiusY="2"
+                                                    StrokeDashArray="4 2"
+                                                    StrokeThickness="1">
+                                                    <Rectangle.Style>
+                                                        <Style TargetType="Rectangle">
+                                                            <Setter Property="Stroke" Value="Gray" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsMouseOver, ElementName=RootGrid}" Value="True">
+                                                                    <Setter Property="Stroke" Value="#0078D4" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Rectangle.Style>
+                                                </Rectangle>
+
+                                                <TextBox
+                                                    Margin="0"
+                                                    Padding="0"
+                                                    VerticalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    VerticalContentAlignment="Top"
+                                                    AcceptsReturn="True"
                                                     Background="Transparent"
-                                                    BorderBrush="Gray"
-                                                    BorderThickness="0.1"
-                                                    ToolTip="拖拽移动，右下角调整大小">
-                                                    <TextBox
-                                                        HorizontalContentAlignment="Stretch"
-                                                        VerticalContentAlignment="Top"
-                                                        AcceptsReturn="True"
-                                                        Background="Transparent"
-                                                        BorderThickness="0"
-                                                        FontSize="{Binding FontSize}"
-                                                        FontWeight="{Binding IsBold, Converter={StaticResource BooleanToFontWeightConverter}}"
-                                                        IsReadOnly="False"
-                                                        Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
-                                                        TextWrapping="Wrap"
-                                                        VerticalScrollBarVisibility="Hidden" />
-                                                </Border>
+                                                    BorderThickness="0"
+                                                    FontSize="{Binding FontSize}"
+                                                    FontWeight="{Binding IsBold, Converter={StaticResource BooleanToFontWeightConverter}}"
+                                                    IsReadOnly="False"
+                                                    Style="{x:Null}"
+                                                    Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
+                                                    TextWrapping="Wrap"
+                                                    VerticalScrollBarVisibility="Hidden" />
 
                                                 <Thumb
-                                                    Width="5"
-                                                    Height="5"
-                                                    Margin="0,0,0,8"
+                                                    Width="10"
+                                                    Height="10"
                                                     HorizontalAlignment="Right"
                                                     VerticalAlignment="Bottom"
                                                     DragDelta="ResizeThumb_DragDelta"
@@ -180,39 +197,57 @@
 
                                                 <Button
                                                     x:Name="DeleteBtn"
-                                                    Width="10"
-                                                    Height="10"
-                                                    Margin="0,-8,-8,0"
+                                                    Width="12"
+                                                    Height="12"
+                                                    Margin="0,-4,-4,0"
+                                                    Padding="0,0,0,1"
                                                     HorizontalAlignment="Right"
                                                     VerticalAlignment="Top"
                                                     Click="DeleteItem_Click"
-                                                    Content="X"
-                                                    FontSize="5"
-                                                    Style="{StaticResource DeleteButtonStyle}" />
+                                                    Content="×"
+                                                    FontSize="9"
+                                                    Style="{StaticResource DeleteButtonStyle}"
+                                                    ToolTip="删除" />
                                             </Grid>
                                         </DataTemplate>
 
                                         <DataTemplate DataType="{x:Type local:QrCodePrintItem}">
                                             <Grid
+                                                x:Name="RootGrid"
                                                 Width="{Binding Width, Mode=TwoWay}"
                                                 Height="{Binding Height, Mode=TwoWay}"
                                                 Background="Transparent">
-                                                <Border
-                                                    Padding="0"
-                                                    Background="Transparent"
-                                                    BorderBrush="Gray"
-                                                    BorderThickness="0.1"
-                                                    ToolTip="{Binding QrContent, StringFormat='二维码内容: {0}'}">
-                                                    <Image
-                                                        HorizontalAlignment="Stretch"
-                                                        VerticalAlignment="Stretch"
-                                                        Source="{Binding QrImageSource}"
-                                                        Stretch="Uniform" />
-                                                </Border>
+
+                                                <Rectangle
+                                                    Fill="Transparent"
+                                                    IsHitTestVisible="False"
+                                                    RadiusX="2"
+                                                    RadiusY="2"
+                                                    StrokeDashArray="4 2"
+                                                    StrokeThickness="1">
+                                                    <Rectangle.Style>
+                                                        <Style TargetType="Rectangle">
+                                                            <Setter Property="Stroke" Value="Gray" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsMouseOver, ElementName=RootGrid}" Value="True">
+                                                                    <Setter Property="Stroke" Value="#0078D4" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Rectangle.Style>
+                                                </Rectangle>
+
+                                                <Image
+                                                    Margin="0"
+                                                    HorizontalAlignment="Stretch"
+                                                    VerticalAlignment="Stretch"
+                                                    Source="{Binding QrImageSource}"
+                                                    Stretch="Fill"
+                                                    ToolTip="{Binding QrContent, StringFormat='二维码内容: {0}'}" />
 
                                                 <Thumb
-                                                    Width="5"
-                                                    Height="5"
+                                                    Width="10"
+                                                    Height="10"
                                                     HorizontalAlignment="Right"
                                                     VerticalAlignment="Bottom"
                                                     DragDelta="ResizeThumb_DragDelta"
@@ -220,15 +255,17 @@
 
                                                 <Button
                                                     x:Name="DeleteBtn"
-                                                    Width="10"
-                                                    Height="10"
-                                                    Margin="0,-8,-8,0"
+                                                    Width="12"
+                                                    Height="12"
+                                                    Margin="0,-4,-4,0"
+                                                    Padding="0,0,0,1"
                                                     HorizontalAlignment="Right"
                                                     VerticalAlignment="Top"
                                                     Click="DeleteItem_Click"
-                                                    Content="X"
-                                                    FontSize="5"
-                                                    Style="{StaticResource DeleteButtonStyle}" />
+                                                    Content="×"
+                                                    FontSize="9"
+                                                    Style="{StaticResource DeleteButtonStyle}"
+                                                    ToolTip="删除" />
                                             </Grid>
                                         </DataTemplate>
                                     </ItemsControl.Resources>
