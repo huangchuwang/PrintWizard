@@ -294,6 +294,28 @@
                             Command="{Binding ResetPositionCommand}"
                             Content="重置位置" />
                     </DockPanel>
+
+                    <StackPanel
+                        Margin="0,0,0,10"
+                        HorizontalAlignment="Center"
+                        Orientation="Horizontal">
+                        <Button
+                            Margin="0,0,10,0"
+                            Padding="10,5"
+                            Background="#6F42C1"
+                            Command="{Binding ImportConfigCommand}"
+                            Content="导入对象配置"
+                            Foreground="White"
+                            ToolTip="导入 JSON 配置文件" />
+                        <Button
+                            Padding="10,5"
+                            Background="#6610F2"
+                            Command="{Binding ExportConfigCommand}"
+                            Content="导出对象配置"
+                            Foreground="White"
+                            ToolTip="导出当前设计为 JSON" />
+                    </StackPanel>
+
                     <Button
                         Margin="0,0,0,5"
                         Padding="8"

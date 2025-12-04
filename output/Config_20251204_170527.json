@@ -1,0 +1,109 @@
+{
+  "PrinterName": "Deli DL-720W",
+  "PaperWidth": 60.0,
+  "PaperHeight": 40.0,
+  "Margin": 0.0,
+  "Copies": 1,
+  "Items": [
+    {
+      "ItemType": "QrCode",
+      "X": 7.559055118110238,
+      "Y": 7.559055118110238,
+      "Width": 93.54330708661419,
+      "Height": 93.54330708661419,
+      "Content": "T5HR20251201000002,0001A1100000001OCL7O,1101000001,20251126",
+      "FontSize": 0.0,
+      "IsBold": false
+    },
+    {
+      "ItemType": "Text",
+      "X": 206.7716535433071,
+      "Y": 131.18110236220474,
+      "Width": 20.0,
+      "Height": 20.0,
+      "Content": "1",
+      "FontSize": 11.338582677165357,
+      "IsBold": false
+    },
+    {
+      "ItemType": "Text",
+      "X": 7.559055118110238,
+      "Y": 101.10236220472443,
+      "Width": 115.78,
+      "Height": 25.0,
+      "Content": "外包装区>外包装区2",
+      "FontSize": 11.338582677165357,
+      "IsBold": false
+    },
+    {
+      "ItemType": "Text",
+      "X": 104.88188976377955,
+      "Y": 7.559055118110238,
+      "Width": 97.66333333333334,
+      "Height": 25.0,
+      "Content": "XR-半成品管理票",
+      "FontSize": 11.338582677165357,
+      "IsBold": false
+    },
+    {
+      "ItemType": "Text",
+      "X": 104.40944881889766,
+      "Y": 23.622047244094492,
+      "Width": 75.31,
+      "Height": 25.0,
+      "Content": "数量：192份",
+      "FontSize": 11.338582677165357,
+      "IsBold": false
+    },
+    {
+      "ItemType": "Text",
+      "X": 103.93700787401576,
+      "Y": 38.74015748031497,
+      "Width": 109.89,
+      "Height": 25.0,
+      "Content": "MFG：2025-10-10",
+      "FontSize": 11.338582677165357,
+      "IsBold": false
+    },
+    {
+      "ItemType": "Text",
+      "X": 103.93700787401576,
+      "Y": 53.385826771653555,
+      "Width": 104.83666666666667,
+      "Height": 25.0,
+      "Content": "EXP：2025-10-10",
+      "FontSize": 11.338582677165357,
+      "IsBold": false
+    },
+    {
+      "ItemType": "Text",
+      "X": 103.93700787401576,
+      "Y": 66.61417322834647,
+      "Width": 89.38000000000001,
+      "Height": 25.0,
+      "Content": "保存条件：冷藏",
+      "FontSize": 11.338582677165357,
+      "IsBold": false
+    },
+    {
+      "ItemType": "Text",
+      "X": 103.93700787401576,
+      "Y": 81.25984251968505,
+      "Width": 83.25,
+      "Height": 25.0,
+      "Content": "确认人：HCW",
+      "FontSize": 11.338582677165357,
+      "IsBold": false
+    },
+    {
+      "ItemType": "Text",
+      "X": 7.559055118110238,
+      "Y": 123.77952755905514,
+      "Width": 198.9474922707616,
+      "Height": 20.0,
+      "Content": "开心果味爆浆小冰麻薯48g罗森",
+      "FontSize": 11.338582677165357,
+      "IsBold": true
+    }
+  ]
+}
