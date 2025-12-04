@@ -1,205 +1,153 @@
-﻿using System;
-using System.Globalization;
+﻿using PrintWizard.Models;
+using PrintWizard.ViewModels;
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Threading;
-using PrintWizard.Models;
-using PrintWizard.ViewModels;
 
 namespace PrintWizard.Views
 {
     public partial class MainWindow : Window
     {
-        // 拖拽相关状态
-        private bool isDragging = false;
-        private Point startClickPoint;
-        private double originalItemX;
-        private double originalItemY;
+        private bool _isDragging = false;
+        private Point _clickPosition;
+        private double _originalLeft, _originalTop;
+        private FrameworkElement _selectedElement;
 
-        // 长按检测
-        private DispatcherTimer longPressTimer;
-        private const int LongPressThresholdMs = 200;
-        private const double DragCancelThreshold = 3.0;
-
-        private FrameworkElement draggedElement;
-        private PrintItemBase draggedItem;
-        private PrintViewModel? vm => DataContext as PrintViewModel;
+        private PrintViewModel ViewModel => DataContext as PrintViewModel;
 
         public MainWindow()
         {
             InitializeComponent();
-
-            longPressTimer = new DispatcherTimer();
-            longPressTimer.Interval = TimeSpan.FromMilliseconds(LongPressThresholdMs);
-            longPressTimer.Tick += LongPressTimer_Tick;
-
-            var viewModel = new PrintViewModel(ContentCanvas);
-            DataContext = viewModel;
-        }
-
-        private void LongPressTimer_Tick(object? sender, EventArgs e)
-        {
-            longPressTimer.Stop();
-
-            if (draggedElement != null && draggedItem != null)
+            if (DataContext == null)
             {
-                isDragging = true;
-                draggedElement.CaptureMouse();
-                Panel.SetZIndex(draggedElement, 999);
-                draggedElement.Cursor = Cursors.SizeAll;
+                DataContext = new PrintViewModel(ContentCanvas);
             }
         }
 
-        private void Item_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        // 辅助方法：查找指定类型的父控件
+        private static T FindVisualParent<T>(DependencyObject child) where T : DependencyObject
         {
-            if (e.OriginalSource is DependencyObject originalSource)
+            DependencyObject parentObject = child;
+            while (parentObject != null)
             {
-                var parentBtn = FindVisualParent<Button>(originalSource);
-                var parentThumb = FindVisualParent<Thumb>(originalSource);
-
-                if (parentBtn != null && parentBtn.Name == "DeleteBtn") return;
-                if (parentThumb != null) return;
+                if (parentObject is T parent) return parent;
+                parentObject = VisualTreeHelper.GetParent(parentObject);
             }
-
-            draggedElement = sender as FrameworkElement;
-            draggedItem = draggedElement?.DataContext as PrintItemBase;
-
-            if (draggedElement == null || draggedItem == null) return;
-
-            isDragging = false;
-            startClickPoint = e.GetPosition(ContentCanvas);
-            originalItemX = draggedItem.X;
-            originalItemY = draggedItem.Y;
-
-            longPressTimer.Start();
+            return null;
         }
 
-        private T FindVisualParent<T>(DependencyObject child) where T : DependencyObject
+        // === 拖拽逻辑 ===
+        private void Item_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            DependencyObject parentObject = VisualTreeHelper.GetParent(child);
-            if (parentObject == null) return null;
-            if (parentObject is T parent) return parent;
-            return FindVisualParent<T>(parentObject);
+            // 【修复核心】：如果点击的是按钮（无论是否叫 DeleteBtn）或调整手柄，
+            // 则直接返回，不执行拖拽逻辑，让控件自己的事件（如 Command）继续触发。
+            if (FindVisualParent<Button>(e.OriginalSource as DependencyObject) != null) return;
+            if (FindVisualParent<Thumb>(e.OriginalSource as DependencyObject) != null) return;
+
+            _selectedElement = sender as FrameworkElement;
+            if (_selectedElement == null) return;
+
+            _isDragging = true;
+            _clickPosition = e.GetPosition(ContentCanvas);
+
+            var item = _selectedElement.DataContext as PrintItemBase;
+            if (item != null)
+            {
+                _originalLeft = item.X;
+                _originalTop = item.Y;
+            }
+
+            _selectedElement.CaptureMouse();
+            e.Handled = true;
         }
 
         private void Item_MouseMove(object sender, MouseEventArgs e)
         {
-            var currentPoint = e.GetPosition(ContentCanvas);
+            if (!_isDragging || _selectedElement == null) return;
 
-            if (longPressTimer.IsEnabled)
+            var currentPos = e.GetPosition(ContentCanvas);
+            double deltaX = currentPos.X - _clickPosition.X;
+            double deltaY = currentPos.Y - _clickPosition.Y;
+
+            var item = _selectedElement.DataContext as PrintItemBase;
+            if (item != null)
             {
-                if (Math.Abs(currentPoint.X - startClickPoint.X) > DragCancelThreshold ||
-                    Math.Abs(currentPoint.Y - startClickPoint.Y) > DragCancelThreshold)
+                double newX = _originalLeft + deltaX;
+                double newY = _originalTop + deltaY;
+
+                if (newX < 0) newX = 0;
+                if (newY < 0) newY = 0;
+
+                if (ViewModel != null)
                 {
-                    longPressTimer.Stop();
-                    return;
+                    if (newX + item.Width > ViewModel.PrintAreaWidth)
+                        newX = Math.Max(0, ViewModel.PrintAreaWidth - item.Width);
+
+                    if (newY + item.Height > ViewModel.PrintAreaHeight)
+                        newY = Math.Max(0, ViewModel.PrintAreaHeight - item.Height);
                 }
-            }
 
-            if (isDragging && vm != null && draggedItem != null)
-            {
-                double deltaX = currentPoint.X - startClickPoint.X;
-                double deltaY = currentPoint.Y - startClickPoint.Y;
-
-                double newX = originalItemX + deltaX;
-                double newY = originalItemY + deltaY;
-
-                double printLeft = 0;
-                double printTop = 0;
-                double itemWidth = draggedItem.Width;
-                double itemHeight = draggedItem.Height;
-
-                double maxNewX = vm.PrintAreaWidth - itemWidth;
-                double maxNewY = vm.PrintAreaHeight - itemHeight;
-
-                newX = Math.Max(printLeft, Math.Min(newX, maxNewX));
-                newY = Math.Max(printTop, Math.Min(newY, maxNewY));
-
-                if (maxNewX < printLeft) newX = printLeft;
-                if (maxNewY < printTop) newY = printTop;
-
-                draggedItem.X = newX;
-                draggedItem.Y = newY;
-
-                e.Handled = true;
+                item.X = newX;
+                item.Y = newY;
             }
         }
 
-        private void Item_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        private void Item_MouseUp(object sender, MouseButtonEventArgs e)
         {
-            if (longPressTimer.IsEnabled)
+            if (_isDragging)
             {
-                longPressTimer.Stop();
+                _isDragging = false;
+                _selectedElement?.ReleaseMouseCapture();
+                _selectedElement = null;
             }
-
-            if (isDragging)
-            {
-                isDragging = false;
-                if (draggedElement != null)
-                {
-                    draggedElement.ReleaseMouseCapture();
-                    Panel.SetZIndex(draggedElement, 1);
-                    draggedElement.Cursor = null;
-                }
-                e.Handled = true;
-            }
-
-            draggedElement = null;
-            draggedItem = null;
         }
 
-        private void ResizeThumb_DragDelta(object sender, DragDeltaEventArgs e)
+        // === 缩放逻辑 ===
+        private void Thumb_DragDelta(object sender, DragDeltaEventArgs e)
         {
             var thumb = sender as Thumb;
             var item = thumb?.DataContext as PrintItemBase;
 
-            if (item != null && vm != null)
+            if (item != null)
             {
-                double newWidth = item.Width + e.HorizontalChange;
-                double newHeight = item.Height + e.VerticalChange;
+                double newW = item.Width + e.HorizontalChange;
+                double newH = item.Height + e.VerticalChange;
 
-                newWidth = Math.Max(newWidth, 20);
-                newHeight = Math.Max(newHeight, 20);
+                newW = Math.Max(newW, 20);
+                newH = Math.Max(newH, 20);
 
-                // 【核心修改】如果是二维码，强制保持正方形比例
+                // 二维码保持正方形
                 if (item is QrCodePrintItem)
                 {
-                    // 取宽高中的最大值作为新的边长，保证不被压扁且操作符合直觉
-                    double size = Math.Max(newWidth, newHeight);
-                    newWidth = size;
-                    newHeight = size;
+                    double size = Math.Max(newW, newH);
+                    newW = size;
+                    newH = size;
                 }
 
-                // 边界限制
-                if (item.X + newWidth > vm.PrintAreaWidth) newWidth = vm.PrintAreaWidth - item.X;
-                if (item.Y + newHeight > vm.PrintAreaHeight) newHeight = vm.PrintAreaHeight - item.Y;
-
-                // 二维码再次检查边界导致的比例失调（如果宽度受限，高度也要跟着受限）
-                if (item is QrCodePrintItem)
+                if (ViewModel != null)
                 {
-                    double size = Math.Min(newWidth, newHeight);
-                    newWidth = size;
-                    newHeight = size;
+                    if (item.X + newW > ViewModel.PrintAreaWidth)
+                        newW = ViewModel.PrintAreaWidth - item.X;
+
+                    if (item.Y + newH > ViewModel.PrintAreaHeight)
+                        newH = ViewModel.PrintAreaHeight - item.Y;
+
+                    if (item is QrCodePrintItem)
+                    {
+                        double size = Math.Min(newW, newH);
+                        newW = size;
+                        newH = size;
+                    }
                 }
 
-                item.Width = newWidth;
-                item.Height = newHeight;
-
+                item.Width = newW;
+                item.Height = newH;
                 e.Handled = true;
             }
         }
-
-        private void DeleteItem_Click(object sender, RoutedEventArgs e)
-        {
-            var itemToDelete = (sender as FrameworkElement)?.DataContext as PrintItemBase;
-            if (itemToDelete != null && vm != null)
-            {
-                vm.PrintItems.Remove(itemToDelete);
-            }
-        }
+        // 旧的 DeleteItem_Click 已被 Command 取代，无需保留
     }
 }
