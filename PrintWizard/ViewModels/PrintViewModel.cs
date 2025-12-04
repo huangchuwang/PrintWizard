@@ -1,4 +1,5 @@
 ﻿using Microsoft.Win32;
+using Newtonsoft.Json;
 using PrintWizard.Common;
 using PrintWizard.Models;
 using System.Collections.ObjectModel;
@@ -262,6 +263,64 @@ namespace PrintWizard.ViewModels
             catch (Exception ex)
             {
                 MessageBox.Show($"打印错误: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 保存配置
+        /// </summary>
+        private void SavePrintConfiguration()
+        {
+            try
+            {
+                var config = new PrintConfig
+                {
+                    PrinterName = SelectedPrinter.Name,
+                    PaperWidth = SelectedPaperSize.Width,
+                    PaperHeight = SelectedPaperSize.Height,
+                    Margin = SelectedMargin.Margin,
+                    Copies = Copies
+                };
+
+                foreach (var item in PrintItems)
+                {
+                    var dto = new PrintItemDto
+                    {
+                        X = item.X,
+                        Y = item.Y,
+                        Width = item.Width,
+                        Height = item.Height
+                    };
+
+                    if (item is TextPrintItem t)
+                    {
+                        dto.ItemType = "Text";
+                        dto.Content = t.Content;
+                        dto.FontSize = t.FontSize;
+                        dto.IsBold = t.IsBold;
+                    }
+                    else if (item is QrCodePrintItem q)
+                    {
+                        dto.ItemType = "QrCode";
+                        dto.Content = q.QrContent;
+                    }
+
+                    config.Items.Add(dto);
+                }
+
+                string json = JsonConvert.SerializeObject(config, Formatting.Indented);
+                string path = Path.Combine("C:\\Users\\ASUS\\Desktop\\Work\\StartTest\\PrintWizard\\output", "print_config.json");
+                File.WriteAllText(path, json);
+
+                // 可选：提示保存成功
+                StatusMessage = "配置已保存";
+
+                PrintConfigTool.ExecutePrintFromConfig(configFilePath:path);
+            }
+            catch (Exception ex)
+            {
+                // 记录日志或静默失败，避免打断打印流程
+                System.Diagnostics.Debug.WriteLine($"配置保存失败: {ex.Message}");
             }
         }
 
