@@ -141,54 +141,30 @@ namespace PrintWizard.ViewModels
             if (PrintAreaHeight < 0) PrintAreaHeight = 0;
         }
 
-        // 【修复】智能计算添加位置，防止跑出屏幕外
         private void ExecuteAddTextItem(object obj)
         {
-            // 默认向下排列
-            double yPos = 10 + (PrintItems.Count * 25);
-
-            // 检查：如果 Y 超过了画布高度的 80%，就重置回顶部
-            // 这样即便导入了很多条目，新添加的也会在上面显示
-            if (yPos > Math.Max(50, PrintAreaHeight - 50))
-            {
-                yPos = 10;
-            }
-
-            // 估算一个合理的默认宽度
-            var textSize = MeasureText(NewItemText, NewItemFontSize, NewItemIsBold);
-            double defaultW = Math.Max(80, textSize.Width + 10);
-            double defaultH = Math.Max(30, textSize.Height + 5);
-
             PrintItems.Add(new TextPrintItem
             {
                 Content = NewItemText,
                 X = 10,
-                Y = yPos,
+                Y = 10 + (PrintItems.Count * 20),
                 FontSize = NewItemFontSize,
                 IsBold = NewItemIsBold,
-                Width = defaultW,
-                Height = defaultH
+                // 默认新添加的项使用默认宽高，或者也可以这里自适应
+                Height = Double.NaN // 如果支持 Auto
             });
             StatusMessage = "已添加文本";
         }
 
-        // 【修复】智能计算添加位置
         private void ExecuteAddQrCodeItem(object obj)
         {
-            double yPos = 50;
-            // 简单的防重叠策略：如果已经在同样位置有了，稍微错开一点
-            if (PrintItems.Any(p => Math.Abs(p.Y - yPos) < 10 && Math.Abs(p.X - 50) < 10))
-            {
-                yPos += 20;
-            }
-
             PrintItems.Add(new QrCodePrintItem
             {
                 QrContent = NewQrCodeContent,
                 X = 50,
-                Y = yPos,
-                Width = 80,
-                Height = 80 // 默认大小
+                Y = 50,
+                Width = 100,
+                Height = 100
             });
             StatusMessage = "已添加二维码";
         }
@@ -200,12 +176,10 @@ namespace PrintWizard.ViewModels
             {
                 item.X = 10;
                 item.Y = y;
-                y += item.Height + 5; // 紧凑排列
-                if (y > PrintAreaHeight - 20) y = 10; // 到底了回到顶部
+                y += 30;
             }
         }
 
-        // 纯净画布生成（用于打印和导出预览，不含删除按钮）
         private Canvas CreateCleanPrintCanvas()
         {
             double scale = 96.0 / 25.4;
@@ -300,7 +274,7 @@ namespace PrintWizard.ViewModels
                 var processor = new CpclProcessor();
                 string commands = processor.GenerateCpcl(PrintItems, SelectedPaperSize, SelectedMargin, Copies);
 
-                string outputDir = Path.Combine("C:\\Users\\ASUS\\Desktop\\Work\\StartTest\\PrintWizard", "output");
+                string outputDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "output");
                 if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
 
                 string fileName = $"Label_{DateTime.Now:yyyyMMdd_HHmmss}";
@@ -342,17 +316,6 @@ namespace PrintWizard.ViewModels
             }
         }
 
-        // 辅助方法：测量文本
-        private Size MeasureText(string text, double fontSize, bool isBold)
-        {
-            if (string.IsNullOrEmpty(text)) return new Size(0, 0);
-            var typeface = new Typeface(new FontFamily("Microsoft YaHei"), FontStyles.Normal,
-                isBold ? FontWeights.Bold : FontWeights.Normal, FontStretches.Normal);
-            var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                typeface, fontSize, Brushes.Black, new NumberSubstitution(), 1.0);
-            return new Size(ft.Width, ft.Height);
-        }
-
         private void InitializePaperSizes()
         {
             PaperSizes.Add(new PaperSize("60×40mm (标签)", 60, 40));
@@ -386,7 +349,6 @@ namespace PrintWizard.ViewModels
         }
     }
 
-    // CpclProcessor 类保持不变，包含 MeasureText 等功能
     public class CpclProcessor
     {
         private const double DotsPerMm = 8.0;
@@ -471,7 +433,7 @@ namespace PrintWizard.ViewModels
                         double wy = (y - m) / ConversionFactor;
                         double fs = (24 * magH) / ConversionFactor;
 
-                        // 使用相同的测量逻辑，确保导入后高度自适应
+                        // 【核心修改】计算文本自适应尺寸
                         Size textSize = MeasureText(content, fs, bold);
 
                         list.Add(new TextPrintItem
@@ -481,6 +443,7 @@ namespace PrintWizard.ViewModels
                             Y = wy,
                             FontSize = fs,
                             IsBold = bold,
+                            // 设置自适应的宽和高，并添加一点Padding
                             Width = Math.Max(50, textSize.Width + 10),
                             Height = Math.Max(25, textSize.Height + 5)
                         });
@@ -518,14 +481,28 @@ namespace PrintWizard.ViewModels
             return "";
         }
 
-        // 测量逻辑复用
+        // 【核心新增】测量文本尺寸
         private Size MeasureText(string text, double fontSize, bool isBold)
         {
             if (string.IsNullOrEmpty(text)) return new Size(0, 0);
-            var typeface = new Typeface(new FontFamily("Microsoft YaHei"), FontStyles.Normal,
-                isBold ? FontWeights.Bold : FontWeights.Normal, FontStretches.Normal);
-            var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                typeface, fontSize, Brushes.Black, new NumberSubstitution(), 1.0);
+
+            var typeface = new Typeface(
+                new FontFamily("Microsoft YaHei"),
+                FontStyles.Normal,
+                isBold ? FontWeights.Bold : FontWeights.Normal,
+                FontStretches.Normal);
+
+            // 注意：.NET Core/5/6/8 FormattedText 构造函数需要 pixelsPerDip 参数
+            var ft = new FormattedText(
+                text,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                typeface,
+                fontSize,
+                Brushes.Black,
+                new NumberSubstitution(),
+                1.0); // 1.0 pixelsPerDip
+
             return new Size(ft.Width, ft.Height);
         }
 
@@ -534,6 +511,7 @@ namespace PrintWizard.ViewModels
             int w = (int)cvs.Width;
             int h = (int)cvs.Height;
             if (w <= 0 || h <= 0) return;
+
             RenderTargetBitmap rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
             rtb.Render(cvs);
             PngBitmapEncoder enc = new PngBitmapEncoder();

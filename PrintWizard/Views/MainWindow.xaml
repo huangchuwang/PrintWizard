@@ -254,7 +254,7 @@
                             Width="150"
                             Margin="5,0"
                             Maximum="72"
-                            Minimum="2"
+                            Minimum="12"
                             Value="{Binding NewItemFontSize}" />
                         <TextBlock VerticalAlignment="Center" Text="{Binding NewItemFontSize}" />
                     </DockPanel>
