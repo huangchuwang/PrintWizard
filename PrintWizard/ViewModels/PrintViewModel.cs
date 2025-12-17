@@ -614,7 +614,7 @@ namespace PrintWizard.ViewModels
         public List<PrintItemBase> ParseCpcl(string path, MarginSetting margin)
         {
             var list = new List<PrintItemBase>();
-            string[] lines = File.ReadAllLines(path, Encoding.GetEncoding("GBK"));
+            string[] lines = File.ReadAllLines(path, Encoding.GetEncoding("UTF-8"));
             int m = (int)(margin.Margin * DotsPerMm);
             int magH = 1;
             bool bold = false;

@@ -1,3 +1,56 @@
-.vs/
-obj/
+# .NET Core
 bin/
+obj/
+*.user
+*.suo
+*.sln.docstates
+
+# Visual Studio
+.vscode/
+.idea/
+*.vscode/
+*.vs/
+
+# NuGet Packages
+*.nupkg
+packages/
+*.snupkg
+
+# Logs
+*.log
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+arm/
+
+# User-specific files
+*.dbmdl
+*.dbproj.schemaview
+*.jfm
+*.publish.xml
+*.pfx
+*.pubxml
+*.publishsettings
+
+# Documentation (if you want to ignore specific types, adjust accordingly)
+docs/
+documentation/
+*.pdf
+*.docx
+*.md
+*.rst
+*.html
+
+# Other files
+*.cache
+*.zip
+*.tar.gz
+*.tgz
+*.tgz
+
+# Ignore specific IDE settings if necessary
+.idea/
+*.iml
