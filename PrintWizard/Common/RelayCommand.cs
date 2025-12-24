@@ -1,12 +1,11 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Input;
 
 namespace PrintWizard.Common
 {
+    /// <summary>
+    /// 将命令绑定到方法的通用命令实现
+    /// </summary>
     public class RelayCommand : ICommand
     {
         private readonly Action<object> execute;

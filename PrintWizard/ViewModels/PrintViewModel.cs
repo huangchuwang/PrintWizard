@@ -1,35 +1,65 @@
 ﻿using Microsoft.Win32;
-using Newtonsoft.Json;
 using PrintWizard.Common;
 using PrintWizard.Models;
+using PrintWizard.Service;
+using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Printing;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 
 namespace PrintWizard.ViewModels
 {
     public class PrintViewModel : INotifyPropertyChanged
     {
-        private Canvas _uiCanvas;
-
-        public PrintViewModel(Canvas canvas) : this()
-        {
-            _uiCanvas = canvas;
-        }
+        // 引用服务类
+        private readonly CpclService _cpclService;
+        private readonly CanvasService _canvasService;
+        private readonly ConfigService _configService;
 
         public PrintViewModel()
         {
+            // 注册编码支持 (建议放在 App.xaml.cs 启动时，但放在这里也没问题)
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
+            // 初始化服务
+            _cpclService = new CpclService();
+            _canvasService = new CanvasService();
+            _configService = new ConfigService();
+
+            // 初始化命令
+            InitCommands();
+
+            // 初始化数据
+            InitializePaperSizes();
+            InitializeMargins();
+            LoadPrinters();
+
+            // 默认设置
+            SelectedPaperSize = PaperSizes.FirstOrDefault(p => p.Name.Contains("60×40mm")) ?? PaperSizes.FirstOrDefault();
+            SelectedMargin = Margins.FirstOrDefault(m => m.DisplayName.Contains("极窄边距")) ?? Margins.FirstOrDefault();
+
+            StatusMessage = "系统就绪";
+        }
+
+        #region Commands & Initialization
+        public ICommand ExportCpclCommand { get; private set; }
+        public ICommand ImportCpclCommand { get; private set; }
+        public ICommand PrintCommand { get; private set; }
+        public ICommand ResetPositionCommand { get; private set; }
+        public ICommand AddTextItemCommand { get; private set; }
+        public ICommand AddQrCodeItemCommand { get; private set; }
+        public ICommand RemoveItemCommand { get; private set; }
+        public ICommand ExportConfigCommand { get; private set; }
+        public ICommand ImportConfigCommand { get; private set; }
+
+        private void InitCommands()
+        {
             PrintCommand = new RelayCommand(ExecutePrint, CanExecutePrint);
             ResetPositionCommand = new RelayCommand(ExecuteResetPosition);
             AddTextItemCommand = new RelayCommand(ExecuteAddTextItem);
@@ -37,37 +67,17 @@ namespace PrintWizard.ViewModels
             ExportCpclCommand = new RelayCommand(ExecuteExportCpcl, CanExecutePrint);
             ImportCpclCommand = new RelayCommand(ExecuteImportCpcl);
             RemoveItemCommand = new RelayCommand(ExecuteRemoveItem);
-
             ExportConfigCommand = new RelayCommand(ExecuteExportConfig, CanExecutePrint);
             ImportConfigCommand = new RelayCommand(ExecuteImportConfig);
-
-            InitializePaperSizes();
-            InitializeMargins();
-            LoadPrinters();
-
-            SelectedPaperSize = PaperSizes.FirstOrDefault(p => p.Name.Contains("60×40mm")) ?? PaperSizes.FirstOrDefault();
-            SelectedMargin = Margins.FirstOrDefault(m => m.DisplayName.Contains("极窄边距")) ?? Margins.FirstOrDefault();
-
-            StatusMessage = "系统就绪";
         }
+        #endregion
 
-        #region Commands & Properties
-        public ICommand ExportCpclCommand { get; }
-        public ICommand ImportCpclCommand { get; }
-        public ICommand PrintCommand { get; }
-        public ICommand ResetPositionCommand { get; }
-        public ICommand AddTextItemCommand { get; }
-        public ICommand AddQrCodeItemCommand { get; }
-        public ICommand RemoveItemCommand { get; }
-        public ICommand ExportConfigCommand { get; }
-        public ICommand ImportConfigCommand { get; }
-
+        #region Properties
         public ObservableCollection<PrintItemBase> PrintItems { get; } = new ObservableCollection<PrintItemBase>();
         public ObservableCollection<PaperSize> PaperSizes { get; } = new();
         public ObservableCollection<MarginSetting> Margins { get; } = new();
         public ObservableCollection<PrintQueue> AvailablePrinters { get; } = new();
 
-        // 【修复】改为完整属性以支持 UI 通知
         private PrintQueue _selectedPrinter;
         public PrintQueue SelectedPrinter
         {
@@ -78,7 +88,7 @@ namespace PrintWizard.ViewModels
         private string _newItemText = "请输入文本";
         public string NewItemText { get => _newItemText; set { _newItemText = value; OnPropertyChanged(); } }
 
-        private string _newQrCodeContent = "123456789";
+        private string _newQrCodeContent = "88888888";
         public string NewQrCodeContent { get => _newQrCodeContent; set { _newQrCodeContent = value; OnPropertyChanged(); } }
 
         private double _newItemFontSize = 12;
@@ -93,6 +103,7 @@ namespace PrintWizard.ViewModels
         private string _statusMessage;
         public string StatusMessage { get => _statusMessage; set { _statusMessage = value; OnPropertyChanged(); } }
 
+        // 布局相关属性
         private double _printAreaWidth;
         public double PrintAreaWidth
         {
@@ -127,42 +138,28 @@ namespace PrintWizard.ViewModels
         }
         #endregion
 
-        #region Methods
-
-        private void ExecuteRemoveItem(object parameter)
-        {
-            if (parameter is PrintItemBase item)
-            {
-                PrintItems.Remove(item);
-                StatusMessage = "元素已删除";
-            }
-        }
+        #region Core Logic Methods
 
         private void UpdateLayout()
         {
             if (SelectedPaperSize == null || SelectedMargin == null) return;
-            double scale = 96.0 / 25.4;
-            double paperW = SelectedPaperSize.Width * scale;
-            double paperH = SelectedPaperSize.Height * scale;
-            double margin = SelectedMargin.Margin * scale;
 
-            PrintMargin = new Thickness(margin);
-            PrintAreaWidth = paperW - (margin * 2);
-            PrintAreaHeight = paperH - (margin * 2);
+            // 使用工具类进行计算
+            var layout = PrintUtils.CalculateLayout(SelectedPaperSize.Width, SelectedPaperSize.Height, SelectedMargin.Margin);
 
-            if (PrintAreaWidth < 0) PrintAreaWidth = 0;
-            if (PrintAreaHeight < 0) PrintAreaHeight = 0;
+            PrintMargin = layout.MarginThickness;
+            PrintAreaWidth = layout.PrintableWidth;
+            PrintAreaHeight = layout.PrintableHeight;
         }
 
         private void ExecuteAddTextItem(object obj)
         {
-            // 智能计算位置
+            // 智能计算Y坐标
             double yPos = 10 + (PrintItems.Count * 25);
             if (yPos > Math.Max(50, PrintAreaHeight - 50)) yPos = 10;
 
-            var textSize = MeasureText(NewItemText, NewItemFontSize, NewItemIsBold);
-            double w = Math.Max(80, textSize.Width + 10);
-            double h = Math.Max(30, textSize.Height + 5);
+            // 使用工具类测量文本
+            var textSize = PrintUtils.MeasureText(NewItemText, NewItemFontSize, NewItemIsBold);
 
             PrintItems.Add(new TextPrintItem
             {
@@ -171,8 +168,8 @@ namespace PrintWizard.ViewModels
                 Y = yPos,
                 FontSize = NewItemFontSize,
                 IsBold = NewItemIsBold,
-                Width = w,
-                Height = h
+                Width = Math.Max(80, textSize.Width + 10),
+                Height = Math.Max(30, textSize.Height + 5)
             });
             StatusMessage = "已添加文本";
         }
@@ -180,6 +177,7 @@ namespace PrintWizard.ViewModels
         private void ExecuteAddQrCodeItem(object obj)
         {
             double yPos = 50;
+            // 简单的防重叠策略
             if (PrintItems.Any(p => Math.Abs(p.Y - yPos) < 10 && Math.Abs(p.X - 50) < 10)) yPos += 20;
 
             PrintItems.Add(new QrCodePrintItem
@@ -193,6 +191,15 @@ namespace PrintWizard.ViewModels
             StatusMessage = "已添加二维码";
         }
 
+        private void ExecuteRemoveItem(object parameter)
+        {
+            if (parameter is PrintItemBase item)
+            {
+                PrintItems.Remove(item);
+                StatusMessage = "元素已删除";
+            }
+        }
+
         private void ExecuteResetPosition(object obj)
         {
             double y = 10;
@@ -203,73 +210,12 @@ namespace PrintWizard.ViewModels
                 y += item.Height + 5;
                 if (y > PrintAreaHeight - 20) y = 10;
             }
-        }
-
-        private Canvas CreateCleanPrintCanvas()
-        {
-            double scale = 96.0 / 25.4;
-            double paperW = SelectedPaperSize.Width * scale;
-            double paperH = SelectedPaperSize.Height * scale;
-            double margin = SelectedMargin.Margin * scale;
-
-            Canvas cleanCv = new Canvas
-            {
-                Width = paperW,
-                Height = paperH,
-                Background = Brushes.White
-            };
-
-            foreach (var item in PrintItems)
-            {
-                FrameworkElement visualElement = null;
-                double finalX = item.X + margin;
-                double finalY = item.Y + margin;
-
-                if (item is TextPrintItem t)
-                {
-                    var tb = new TextBlock
-                    {
-                        Text = t.Content,
-                        FontSize = t.FontSize,
-                        FontWeight = t.IsBold ? FontWeights.Bold : FontWeights.Normal,
-                        Width = t.Width,
-                        TextWrapping = TextWrapping.Wrap,
-                        Foreground = Brushes.Black,
-                        VerticalAlignment = VerticalAlignment.Top
-                    };
-                    visualElement = tb;
-                }
-                else if (item is QrCodePrintItem q)
-                {
-                    var img = new Image
-                    {
-                        Source = q.QrImageSource,
-                        Width = q.Width,
-                        Height = q.Height,
-                        Stretch = Stretch.Fill
-                    };
-                    visualElement = img;
-                }
-
-                if (visualElement != null)
-                {
-                    Canvas.SetLeft(visualElement, finalX);
-                    Canvas.SetTop(visualElement, finalY);
-                    cleanCv.Children.Add(visualElement);
-                }
-            }
-
-            Size size = new Size(paperW, paperH);
-            cleanCv.Measure(size);
-            cleanCv.Arrange(new Rect(new Point(0, 0), size));
-            cleanCv.UpdateLayout();
-
-            return cleanCv;
+            StatusMessage = "位置已重置";
         }
 
         private bool CanExecutePrint(object obj) => PrintItems.Count > 0;
 
-        // 【关键修复】打印逻辑
+        // === 打印逻辑 (委托给 CanvasService) ===
         private void ExecutePrint(object obj)
         {
             if (SelectedPrinter == null)
@@ -280,170 +226,43 @@ namespace PrintWizard.ViewModels
 
             try
             {
-                PrintDialog pd = new PrintDialog();
-                pd.PrintQueue = SelectedPrinter;
+                // 1. 生成纯净画布
+                Canvas canvasToPrint = _canvasService.CreateCleanPrintCanvas(PrintItems, SelectedPaperSize, SelectedMargin);
 
-                // 1. 【核心修复】设置 PrintTicket 纸张大小和份数
+                // 2. 配置打印参数
+                PrintDialog pd = new PrintDialog { PrintQueue = SelectedPrinter };
+
                 if (SelectedPaperSize != null)
                 {
-                    double scale = 96.0 / 25.4;
-                    double w = SelectedPaperSize.Width * scale;
-                    double h = SelectedPaperSize.Height * scale;
+                    // 转换单位 mm -> px (DIP)
+                    double w = PrintUtils.MmToDip(SelectedPaperSize.Width);
+                    double h = PrintUtils.MmToDip(SelectedPaperSize.Height);
 
-                    // 设置页面尺寸，这对于标签打印机至关重要
                     pd.PrintTicket.PageMediaSize = new PageMediaSize(w, h);
                     pd.PrintTicket.CopyCount = Copies;
                 }
 
-                // 2. 生成纯净画布
-                Canvas canvasToPrint = CreateCleanPrintCanvas();
-
-                // 3. 发送打印
-                pd.PrintVisual(canvasToPrint, "Label Print Job");
-
+                // 3. 打印
+                pd.PrintVisual(canvasToPrint, "PrintWizard Print Job");
                 StatusMessage = $"已发送 {Copies} 份至打印机";
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"打印发生错误:\n{ex.Message}", "打印失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"打印错误: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        private void ExecuteExportConfig(object obj)
-        {
-            try
-            {
-                SaveFileDialog sfd = new SaveFileDialog();
-                sfd.Filter = "Print Config (*.json)|*.json";
-                sfd.FileName = $"Config_{DateTime.Now:yyyyMMdd_HHmmss}.json";
-                if (sfd.ShowDialog() != true) return;
-
-                var config = new PrintConfig
-                {
-                    PrinterName = SelectedPrinter?.Name,
-                    PaperWidth = SelectedPaperSize?.Width ?? 0,
-                    PaperHeight = SelectedPaperSize?.Height ?? 0,
-                    Margin = SelectedMargin?.Margin ?? 0,
-                    Copies = Copies
-                };
-
-                foreach (var item in PrintItems)
-                {
-                    var dto = new PrintItemDto
-                    {
-                        X = item.X,
-                        Y = item.Y,
-                        Width = item.Width,
-                        Height = item.Height
-                    };
-
-                    if (item is TextPrintItem t)
-                    {
-                        dto.ItemType = "Text";
-                        dto.Content = t.Content;
-                        dto.FontSize = t.FontSize;
-                        dto.IsBold = t.IsBold;
-                    }
-                    else if (item is QrCodePrintItem q)
-                    {
-                        dto.ItemType = "QrCode";
-                        dto.Content = q.QrContent;
-                    }
-                    config.Items.Add(dto);
-                }
-
-                string json = JsonConvert.SerializeObject(config, Formatting.Indented);
-                File.WriteAllText(sfd.FileName, json);
-
-                StatusMessage = $"配置已导出: {Path.GetFileName(sfd.FileName)}";
-                MessageBox.Show($"配置已保存至:\n{sfd.FileName}", "导出成功", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"导出配置失败: {ex.Message}", "错误");
-            }
-        }
-
-        private void ExecuteImportConfig(object obj)
-        {
-            try
-            {
-                OpenFileDialog ofd = new OpenFileDialog();
-                ofd.Filter = "Print Config (*.json)|*.json";
-                if (ofd.ShowDialog() != true) return;
-
-                string json = File.ReadAllText(ofd.FileName);
-                PrintConfig config = JsonConvert.DeserializeObject<PrintConfig>(json);
-
-                if (config == null) return;
-
-                var paper = PaperSizes.FirstOrDefault(p => Math.Abs(p.Width - config.PaperWidth) < 0.1 && Math.Abs(p.Height - config.PaperHeight) < 0.1);
-                if (paper == null)
-                {
-                    paper = new PaperSize($"自定义 ({config.PaperWidth}x{config.PaperHeight}mm)", config.PaperWidth, config.PaperHeight);
-                    PaperSizes.Add(paper);
-                }
-                SelectedPaperSize = paper;
-
-                var margin = Margins.FirstOrDefault(m => Math.Abs(m.Margin - config.Margin) < 0.1);
-                if (margin == null)
-                {
-                    margin = new MarginSetting($"自定义 ({config.Margin}mm)", config.Margin);
-                    Margins.Add(margin);
-                }
-                SelectedMargin = margin;
-
-                Copies = config.Copies;
-
-                if (!string.IsNullOrEmpty(config.PrinterName))
-                {
-                    var printer = AvailablePrinters.FirstOrDefault(p => p.Name == config.PrinterName);
-                    if (printer != null) SelectedPrinter = printer;
-                }
-
-                PrintItems.Clear();
-                foreach (var dto in config.Items)
-                {
-                    if (dto.ItemType == "Text")
-                    {
-                        PrintItems.Add(new TextPrintItem
-                        {
-                            Content = dto.Content,
-                            X = dto.X,
-                            Y = dto.Y,
-                            Width = dto.Width,
-                            Height = dto.Height,
-                            FontSize = dto.FontSize,
-                            IsBold = dto.IsBold
-                        });
-                    }
-                    else if (dto.ItemType == "QrCode")
-                    {
-                        PrintItems.Add(new QrCodePrintItem
-                        {
-                            QrContent = dto.Content,
-                            X = dto.X,
-                            Y = dto.Y,
-                            Width = dto.Width,
-                            Height = dto.Height
-                        });
-                    }
-                }
-                StatusMessage = "配置导入完成";
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"导入配置失败: {ex.Message}", "错误");
-            }
-        }
-
+        // === CPCL 导出 (委托给 CpclService 和 CanvasService) ===
         private void ExecuteExportCpcl(object obj)
         {
             try
             {
                 if (SelectedPaperSize == null || SelectedMargin == null) return;
-                var processor = new CpclProcessor();
-                string commands = processor.GenerateCpcl(PrintItems, SelectedPaperSize, SelectedMargin, Copies);
+
+                // 生成指令
+                string commands = _cpclService.GenerateCpcl(PrintItems, SelectedPaperSize, SelectedMargin, Copies);
+
+                // 准备路径
                 string outputDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "output");
                 if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
 
@@ -451,12 +270,15 @@ namespace PrintWizard.ViewModels
                 string txtPath = Path.Combine(outputDir, $"{fileName}.txt");
                 string pngPath = Path.Combine(outputDir, $"{fileName}.png");
 
+                // 保存文件 (GBK编码)
                 File.WriteAllText(txtPath, commands, Encoding.GetEncoding("GBK"));
-                Canvas cleanCanvas = CreateCleanPrintCanvas();
-                processor.SavePreviewImage(cleanCanvas, pngPath);
+
+                // 保存预览图
+                Canvas cleanCanvas = _canvasService.CreateCleanPrintCanvas(PrintItems, SelectedPaperSize, SelectedMargin);
+                _canvasService.SaveCanvasToImage(cleanCanvas, pngPath);
 
                 StatusMessage = $"已导出: {fileName}";
-                MessageBox.Show($"指令与预览图已保存至:\n{outputDir}", "导出成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show($"指令与预览图已保存至:\n{outputDir}", "导出成功");
             }
             catch (Exception ex)
             {
@@ -471,11 +293,13 @@ namespace PrintWizard.ViewModels
                 OpenFileDialog dlg = new OpenFileDialog { Filter = "CPCL File|*.txt;*.cpcl" };
                 if (dlg.ShowDialog() != true) return;
 
-                var processor = new CpclProcessor();
-                var items = processor.ParseCpcl(dlg.FileName, SelectedMargin);
+                // 解析指令
+                var items = _cpclService.ParseCpcl(dlg.FileName, SelectedMargin);
+
                 PrintItems.Clear();
                 foreach (var item in items) PrintItems.Add(item);
-                StatusMessage = "导入成功";
+
+                StatusMessage = "CPCL 导入成功";
             }
             catch (Exception ex)
             {
@@ -483,21 +307,92 @@ namespace PrintWizard.ViewModels
             }
         }
 
-        private Size MeasureText(string text, double fontSize, bool isBold)
+        // === JSON 配置导出/导入 (委托给 ConfigService) ===
+        private void ExecuteExportConfig(object obj)
         {
-            if (string.IsNullOrEmpty(text)) return new Size(0, 0);
-            var typeface = new Typeface(new FontFamily("Microsoft YaHei"), FontStyles.Normal,
-                isBold ? FontWeights.Bold : FontWeights.Normal, FontStretches.Normal);
-            var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                typeface, fontSize, Brushes.Black, new NumberSubstitution(), 1.0);
-            return new Size(ft.Width, ft.Height);
+            try
+            {
+                SaveFileDialog sfd = new SaveFileDialog
+                {
+                    Filter = "Print Config (*.json)|*.json",
+                    FileName = $"Config_{DateTime.Now:yyyyMMdd_HHmmss}.json"
+                };
+                if (sfd.ShowDialog() != true) return;
+
+                var config = _configService.CreateConfigFromViewModel(PrintItems, SelectedPaperSize, SelectedMargin, SelectedPrinter, Copies);
+                _configService.SaveConfigToFile(config, sfd.FileName);
+
+                StatusMessage = "配置已导出";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"导出配置失败: {ex.Message}");
+            }
         }
 
+        private void ExecuteImportConfig(object obj)
+        {
+            try
+            {
+                OpenFileDialog ofd = new OpenFileDialog { Filter = "Print Config (*.json)|*.json" };
+                if (ofd.ShowDialog() != true) return;
+
+                var config = _configService.LoadConfigFromFile(ofd.FileName);
+                if (config == null) return;
+
+                RestoreFromConfig(config);
+                StatusMessage = "配置导入完成";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"导入配置失败: {ex.Message}");
+            }
+        }
+
+        private void RestoreFromConfig(PrintConfig config)
+        {
+            // 恢复页面设置 (尝试查找或创建自定义)
+            var paper = PaperSizes.FirstOrDefault(p => Math.Abs(p.Width - config.PaperWidth) < 0.1 && Math.Abs(p.Height - config.PaperHeight) < 0.1);
+            if (paper == null)
+            {
+                paper = new PaperSize($"自定义 ({config.PaperWidth}x{config.PaperHeight}mm)", config.PaperWidth, config.PaperHeight);
+                PaperSizes.Add(paper);
+            }
+            SelectedPaperSize = paper;
+
+            var margin = Margins.FirstOrDefault(m => Math.Abs(m.Margin - config.Margin) < 0.1);
+            if (margin == null)
+            {
+                margin = new MarginSetting($"自定义 ({config.Margin}mm)", config.Margin);
+                Margins.Add(margin);
+            }
+            SelectedMargin = margin;
+
+            Copies = config.Copies;
+
+            if (!string.IsNullOrEmpty(config.PrinterName))
+            {
+                var printer = AvailablePrinters.FirstOrDefault(p => p.Name == config.PrinterName);
+                if (printer != null) SelectedPrinter = printer;
+            }
+
+            // 恢复元素
+            PrintItems.Clear();
+            foreach (var item in _configService.MapDtosToItems(config.Items))
+            {
+                PrintItems.Add(item);
+            }
+        }
+
+        #endregion
+
+        #region Init Helpers
         private void InitializePaperSizes()
         {
             PaperSizes.Add(new PaperSize("60×40mm (标签)", 60, 40));
             PaperSizes.Add(new PaperSize("50×30mm (标签)", 50, 30));
             PaperSizes.Add(new PaperSize("40×30mm (标签)", 40, 30));
+            PaperSizes.Add(new PaperSize("100×180mm (电子面单)", 100, 180));
         }
 
         private void InitializeMargins()
@@ -514,193 +409,14 @@ namespace PrintWizard.ViewModels
                 var server = new LocalPrintServer();
                 foreach (var q in server.GetPrintQueues()) AvailablePrinters.Add(q);
                 SelectedPrinter = server.DefaultPrintQueue;
-            }
-            catch { }
+            }catch{}
         }
-        #endregion
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string name = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
-    }
-
-    // ==========================================
-    //  模型类定义 (用于 JSON 序列化)
-    // ==========================================
-    public class PrintConfig
-    {
-        public string PrinterName { get; set; }
-        public double PaperWidth { get; set; }
-        public double PaperHeight { get; set; }
-        public double Margin { get; set; }
-        public int Copies { get; set; }
-        public List<PrintItemDto> Items { get; set; } = new List<PrintItemDto>();
-    }
-
-    public class PrintItemDto
-    {
-        public string ItemType { get; set; } // "Text" or "QrCode"
-        public double X { get; set; }
-        public double Y { get; set; }
-        public double Width { get; set; }
-        public double Height { get; set; }
-
-        // 文本属性
-        public string Content { get; set; }
-        public double FontSize { get; set; }
-        public bool IsBold { get; set; }
-    }
-
-    public class CpclProcessor
-    {
-        private const double DotsPerMm = 8.0;
-        private const double WpfDipPerMm = 96.0 / 25.4;
-        private double ConversionFactor => DotsPerMm / WpfDipPerMm;
-
-        public string GenerateCpcl(IEnumerable<PrintItemBase> items, PaperSize size, MarginSetting margin, int copies)
-        {
-            StringBuilder sb = new StringBuilder();
-            int h = (int)(size.Height * DotsPerMm);
-            int w = (int)(size.Width * DotsPerMm);
-            int m = (int)(margin.Margin * DotsPerMm);
-
-            sb.AppendLine($"! 0 200 200 {h} {copies}");
-            sb.AppendLine($"PAGE-WIDTH {w}");
-
-            foreach (var item in items)
-            {
-                int x = (int)Math.Round(item.X * ConversionFactor) + m;
-                int y = (int)Math.Round(item.Y * ConversionFactor) + m;
-
-                if (item is TextPrintItem t)
-                {
-                    int baseH = 24;
-                    int targetH = (int)(t.FontSize * ConversionFactor);
-                    int mag = targetH > baseH ? targetH / baseH : 1;
-                    if (mag > 4) mag = 4;
-
-                    if (t.IsBold) sb.AppendLine("SETBOLD 1");
-                    if (mag > 1) sb.AppendLine($"SETMAG {mag} {mag}");
-
-                    var lines = t.Content.Replace("\r\n", "\n").Split('\n');
-                    int curY = y;
-                    int lineH = (baseH * mag) + 6;
-
-                    foreach (var line in lines)
-                    {
-                        sb.AppendLine($"TEXT 7 0 {x} {curY} {line}");
-                        curY += lineH;
-                    }
-
-                    if (mag > 1) sb.AppendLine("SETMAG 0 0");
-                    if (t.IsBold) sb.AppendLine("SETBOLD 0");
-                }
-                else if (item is QrCodePrintItem q)
-                {
-                    double targetDots = q.Width * ConversionFactor;
-                    int u = (int)Math.Round(targetDots / 33.0);
-                    if (u < 1) u = 1;
-                    sb.AppendLine($"BARCODE QR {x} {y} M 2 U {u}");
-                    sb.AppendLine($"MA,{q.QrContent}");
-                    sb.AppendLine("ENDQR");
-                }
-            }
-            sb.AppendLine("PRINT");
-            return sb.ToString();
-        }
-
-        public List<PrintItemBase> ParseCpcl(string path, MarginSetting margin)
-        {
-            var list = new List<PrintItemBase>();
-            string[] lines = File.ReadAllLines(path, Encoding.GetEncoding("UTF-8"));
-            int m = (int)(margin.Margin * DotsPerMm);
-            int magH = 1;
-            bool bold = false;
-
-            for (int i = 0; i < lines.Length; i++)
-            {
-                string line = lines[i].Trim();
-                var parts = line.Split(' ');
-
-                if (line.StartsWith("SETMAG") && parts.Length > 2)
-                    int.TryParse(parts[2], out magH);
-                else if (line.StartsWith("SETBOLD"))
-                    bold = parts.Length > 1 && parts[1] == "1";
-                else if (line.StartsWith("TEXT") && parts.Length >= 5)
-                {
-                    if (int.TryParse(parts[3], out int x) && int.TryParse(parts[4], out int y))
-                    {
-                        string content = GetTextContent(line);
-                        double wx = (x - m) / ConversionFactor;
-                        double wy = (y - m) / ConversionFactor;
-                        double fs = (24 * magH) / ConversionFactor;
-
-                        var size = MeasureText(content, fs, bold);
-                        list.Add(new TextPrintItem
-                        {
-                            Content = content,
-                            X = wx,
-                            Y = wy,
-                            FontSize = fs,
-                            IsBold = bold,
-                            Width = size.Width + 10,
-                            Height = size.Height + 5
-                        });
-                    }
-                }
-                else if (line.StartsWith("BARCODE QR") && parts.Length >= 4)
-                {
-                    if (int.TryParse(parts[2], out int x) && int.TryParse(parts[3], out int y))
-                    {
-                        double u = 4;
-                        for (int k = 0; k < parts.Length; k++) if (parts[k] == "U" && k + 1 < parts.Length) double.TryParse(parts[k + 1], out u);
-                        if (i + 1 < lines.Length)
-                        {
-                            string data = lines[++i].Replace("MA,", "");
-                            double wx = (x - m) / ConversionFactor;
-                            double wy = (y - m) / ConversionFactor;
-                            double sz = (u * 33) / ConversionFactor;
-                            list.Add(new QrCodePrintItem { QrContent = data, X = wx, Y = wy, Width = sz, Height = sz });
-                        }
-                    }
-                }
-            }
-            return list;
-        }
-
-        private string GetTextContent(string line)
-        {
-            int spaces = 0;
-            for (int i = 0; i < line.Length; i++)
-            {
-                if (line[i] == ' ') spaces++;
-                if (spaces == 5) return line.Substring(i + 1);
-            }
-            return "";
-        }
-
-        private Size MeasureText(string text, double fontSize, bool isBold)
-        {
-            if (string.IsNullOrEmpty(text)) return new Size(0, 0);
-            var typeface = new Typeface(new FontFamily("Microsoft YaHei"), FontStyles.Normal,
-                isBold ? FontWeights.Bold : FontWeights.Normal, FontStretches.Normal);
-            var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                typeface, fontSize, Brushes.Black, new NumberSubstitution(), 1.0);
-            return new Size(ft.Width, ft.Height);
-        }
-
-        public void SavePreviewImage(Canvas cvs, string path)
-        {
-            int w = (int)cvs.Width;
-            int h = (int)cvs.Height;
-            if (w <= 0 || h <= 0) return;
-            RenderTargetBitmap rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
-            rtb.Render(cvs);
-            PngBitmapEncoder enc = new PngBitmapEncoder();
-            enc.Frames.Add(BitmapFrame.Create(rtb));
-            using (Stream s = File.Create(path)) enc.Save(s);
-        }
+        #endregion
     }
 }

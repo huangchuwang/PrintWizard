@@ -1,10 +1,13 @@
-﻿using System.Globalization;
+﻿using System;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 
 namespace PrintWizard.Common
 {
-    // 转换器：将 bool 转换为 FontWeight 
+    /// <summary>
+    /// 值转换器：将布尔值转换为字体粗细
+    /// </summary>
     public class BooleanToFontWeightConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

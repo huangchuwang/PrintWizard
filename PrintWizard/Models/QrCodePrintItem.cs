@@ -35,6 +35,11 @@ namespace PrintWizard.Models
             set { qrImageSource = value; OnPropertyChanged(); }
         }
 
+        /// <summary>
+        /// 生成二维码图片
+        /// </summary>
+        /// <param name="content">内容</param>
+        /// <returns>图片</returns>
         private BitmapSource GenerateQrCodeBitmap(string content)
         {
             if (string.IsNullOrEmpty(content)) return null;
@@ -44,7 +49,6 @@ namespace PrintWizard.Models
                 QRCodeData qrCodeData = qrGenerator.CreateQrCode(content, QRCodeGenerator.ECCLevel.Q);
                 using (var qrCode = new QRCode(qrCodeData))
                 {
-                    // 【关键修改】将最后一个参数改为 false
                     // GetGraphic(pixelsPerModule, darkColor, lightColor, drawQuietZones)
                     // drawQuietZones: false 表示不绘制默认的白色静区边框
                     using (var qrBitmap = qrCode.GetGraphic(20, System.Drawing.Color.Black, System.Drawing.Color.White, false))

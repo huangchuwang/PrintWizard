@@ -6,7 +6,6 @@
     StartupUri="Views/MainWindow.xaml">
     <Application.Resources>
         <local2:SubtractConverter x:Key="SubtractConverter" />
-
         <Style x:Key="DeleteButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Red" />
             <Setter Property="Foreground" Value="White" />

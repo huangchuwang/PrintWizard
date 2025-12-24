@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace PrintWizard.Common
 {
     /// <summary>
-    /// 打印纸模型
+    /// 打印纸张尺寸模型
     /// </summary>
     public class PaperSize
     {
